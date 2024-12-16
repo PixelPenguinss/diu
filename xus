@@ -1,0 +1,76 @@
+import time
+from solana.publickey import PublicKey
+from solana.rpc.api import Client
+from ethers import Web3
+from ethers.providers import JsonRpcProvider
+from wormhole import WormholeClient
+
+# Setup Ethereum provider
+ethereum_rpc_url = "https://mainnet.infura.io/v3/YOUR_INFURA_KEY"
+w3 = Web3(JsonRpcProvider(ethereum_rpc_url))
+
+# Setup Solana client
+solana_rpc_url = "https://api.mainnet-beta.solana.com"
+solana_client = Client(solana_rpc_url)
+
+# Wormhole client setup
+wormhole = WormholeClient()
+
+# Ethereum wallet details
+eth_private_key = "YOUR_ETH_PRIVATE_KEY"
+eth_wallet_address = w3.eth.account.privateKeyToAccount(eth_private_key).address
+
+# Solana wallet details
+solana_wallet_address = PublicKey("YOUR_SOLANA_WALLET_ADDRESS")
+
+# Token details (e.g., ERC-20 token address on Ethereum)
+erc20_token_address = "0xTokenAddressOnEthereum"
+
+# 1. Lock assets on Ethereum
+def lock_assets_on_ethereum():
+    token_contract = w3.eth.contract(address=erc20_token_address, abi=erc20_abi)
+    
+    # Approve transfer of tokens to Wormhole contract (if necessary)
+    approval_tx = token_contract.functions.approve(wormhole.contract_address, 1000000).buildTransaction({
+        'from': eth_wallet_address,
+        'gas': 200000,
+        'gasPrice': w3.toWei('20', 'gwei'),
+        'nonce': w3.eth.getTransactionCount(eth_wallet_address),
+    })
+
+    # Sign and send the transaction
+    signed_tx = w3.eth.account.signTransaction(approval_tx, eth_private_key)
+    tx_hash = w3.eth.sendRawTransaction(signed_tx.rawTransaction)
+    print(f"Approval TX Hash: {tx_hash.hex()}")
+    
+    # Locking the token with the Wormhole protocol
+    lock_tx = wormhole.lock_tokens_on_ethereum(eth_wallet_address, erc20_token_address, 1000000)
+    print(f"Locked tokens with TX hash: {lock_tx['tx_hash']}")
+
+# 2. Transfer via Wormhole to Solana
+def transfer_to_solana():
+    # Wait for the transaction to be confirmed
+    time.sleep(10)  # Adjust based on actual network latency
+    
+    # Transfer request from Wormhole
+    transfer_data = wormhole.transfer_asset_to_solana(eth_wallet_address, solana_wallet_address, 1000000)
+    print(f"Transfer request to Solana initiated with Wormhole: {transfer_data}")
+
+# 3. Verify on Solana
+def verify_transfer_on_solana():
+    # Solana program listens for Wormhole messages
+    solana_transaction = solana_client.get_confirmed_transaction("TRANSACTION_HASH_FROM_WORMHOLE")
+    if solana_transaction:
+        print("Asset successfully transferred to Solana!")
+    else:
+        print("Asset transfer failed!")
+
+if __name__ == "__main__":
+    # Lock assets on Ethereum
+    lock_assets_on_ethereum()
+    
+    # Transfer assets via Wormhole
+    transfer_to_solana()
+    
+    # Verify transfer on Solana
+    verify_transfer_on_solana()
